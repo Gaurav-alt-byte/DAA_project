@@ -221,7 +221,11 @@ int main(int argc, char** argv) {
         {{101, 2.5}, 500.0, 500.0},  // faster, near the opposite corner
     };
     std::vector<resource_mgmt::ServerSpec> specs;
-    for (const auto& s : servers) specs.push_back(s.spec);
+    std::unordered_map<uint64_t, std::pair<double, double>> server_pos;
+    for (const auto& s : servers) {
+        specs.push_back(s.spec);
+        server_pos[s.spec.server_id] = {s.x, s.y};
+    }
 
     resource_mgmt::FifoResourceAllocator allocator(specs);
     auto offloading_policy = makeOffloadingPolicy(cfg.offloading_name, cfg.latency_weight);
@@ -293,20 +297,31 @@ int main(int argc, char** argv) {
             for (auto task_id : ordered) {
                 const scheduling::Task& task = *dag.by_id.at(task_id);
 
-                // Refresh per-server link latency from this DAG's owner
-                // vehicle's current position before deciding.
-                for (const auto& s : servers) {
-                    double lat = mobility->estimateLatencyMs(dag.owner_vehicle, s.x, s.y);
-                    if (lat >= 1e9 && dag.last_latency_ms.count(s.spec.server_id)) {
-                        lat = dag.last_latency_ms[s.spec.server_id];  // vehicle left; use last-known
+                // Build this task's own ServerState snapshot fresh, rather
+                // than mutating allocator's shared link_latency_ms field
+                // and reading it back. That shared-mutable-field pattern
+                // is exactly what made the old per-tick CSV log whichever
+                // task happened to run last that tick instead of a
+                // meaningful value (see git history / README changelog)
+                // -- decisions themselves were always correct (each task
+                // read back its own just-computed latency immediately),
+                // but nothing about *this* value should be observable
+                // outside this one decide() call, so it no longer is.
+                std::vector<offloading::ServerState> decision_state;
+                decision_state.reserve(servers.size());
+                for (const auto& base : allocator.currentState()) {
+                    double lat = mobility->estimateLatencyMs(dag.owner_vehicle,
+                                                              server_pos.at(base.server_id).first,
+                                                              server_pos.at(base.server_id).second);
+                    if (lat >= 1e9 && dag.last_latency_ms.count(base.server_id)) {
+                        lat = dag.last_latency_ms[base.server_id];  // vehicle left; use last-known
                     } else if (lat < 1e9) {
-                        dag.last_latency_ms[s.spec.server_id] = lat;
+                        dag.last_latency_ms[base.server_id] = lat;
                     }
-                    allocator.setLinkLatency(s.spec.server_id, lat);
+                    decision_state.push_back({base.server_id, base.queue_length, base.cpu_capacity, lat});
                 }
 
-                auto server_state = allocator.currentState();
-                auto assignment = offloading_policy->decide(task, server_state);
+                auto assignment = offloading_policy->decide(task, decision_state);
                 if (!assignment.server_id.has_value()) continue;  // no server available this tick
 
                 allocator.admit(*assignment.server_id, {task.id, task.estimated_workload});
@@ -356,14 +371,33 @@ int main(int argc, char** argv) {
         for (const auto& kv : vpos) mean_speed += kv.second.speed;
         if (!vpos.empty()) mean_speed /= static_cast<double>(vpos.size());
 
+        // Ambient per-server latency for logging: mean latency from every
+        // vehicle currently in the simulation to that server, computed
+        // fresh every tick regardless of whether anything was dispatched
+        // this tick. Deliberately independent of the per-task decision
+        // latencies above (those reflect one DAG's owner vehicle at
+        // decide()-time; this reflects the whole network at log-time) --
+        // conflating the two was the bug: logging used to read back
+        // whichever task's decision latency happened to be set last.
+        std::unordered_map<uint64_t, double> ambient_latency_ms;
+        for (const auto& s : servers) {
+            double sum = 0.0;
+            int n = 0;
+            for (const auto& kv : vpos) {
+                double lat = mobility->estimateLatencyMs(kv.first, s.x, s.y);
+                if (lat < 1e9) { sum += lat; ++n; }
+            }
+            ambient_latency_ms[s.spec.server_id] = (n > 0) ? (sum / n) : 0.0;
+        }
+
         auto state = allocator.currentState();
         std::unordered_map<uint64_t, offloading::ServerState> state_by_id;
         for (const auto& s : state) state_by_id[s.server_id] = s;
 
         ticks_csv << sim_time_s << "," << vpos.size() << "," << mean_speed << ","
                   << active_dags.size() << "," << state_by_id[100].queue_length << ","
-                  << state_by_id[100].link_latency_ms << "," << state_by_id[101].queue_length << ","
-                  << state_by_id[101].link_latency_ms << "," << total_tasks_dispatched << ","
+                  << ambient_latency_ms[100] << "," << state_by_id[101].queue_length << ","
+                  << ambient_latency_ms[101] << "," << total_tasks_dispatched << ","
                   << total_tasks_completed << "\n";
     }
 
