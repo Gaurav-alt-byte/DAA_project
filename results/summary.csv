@@ -1,0 +1,13 @@
+label,scheduler,offloading,mobility,seed,duration_s,arrival_rate_hz,dags_spawned,tasks_dispatched,tasks_completed,completion_ratio
+heft_greedy_seed1,heft,greedy,sumo,1,200,1.2,221,978,978,1
+heft_greedy_seed2,heft,greedy,sumo,2,200,1.2,229,1027,1027,1
+heft_greedy_seed3,heft,greedy,sumo,3,200,1.2,236,1082,1082,1
+heft_nearest_seed1,heft,nearest,sumo,1,200,1.2,221,978,978,1
+heft_nearest_seed2,heft,nearest,sumo,2,200,1.2,229,1027,1027,1
+heft_nearest_seed3,heft,nearest,sumo,3,200,1.2,236,1082,1082,1
+fifo_greedy_seed1,fifo,greedy,sumo,1,200,1.2,221,978,978,1
+fifo_greedy_seed2,fifo,greedy,sumo,2,200,1.2,229,1027,1027,1
+fifo_greedy_seed3,fifo,greedy,sumo,3,200,1.2,236,1082,1082,1
+fifo_nearest_seed1,fifo,nearest,sumo,1,200,1.2,221,978,978,1
+fifo_nearest_seed2,fifo,nearest,sumo,2,200,1.2,229,1027,1027,1
+fifo_nearest_seed3,fifo,nearest,sumo,3,200,1.2,236,1082,1082,1

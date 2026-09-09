@@ -1,0 +1,14 @@
+<configuration>
+    <input>
+        <net-file value="grid.net.xml"/>
+        <route-files value="routes.rou.xml"/>
+    </input>
+    <time>
+        <begin value="0"/>
+        <end value="200"/>
+    </time>
+    <processing>
+        <time-to-teleport value="-1"/>
+        <no-step-log value="true"/>
+    </processing>
+</configuration>

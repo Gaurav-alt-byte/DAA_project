@@ -15,7 +15,7 @@ public:
         : latency_weight_(latency_weight) {}
 
     Assignment decide(const iov::scheduling::Task& task,
-                       const std::vector<ServerState>& available_servers) override {
+                    const std::vector<ServerState>& available_servers) override {
         if (available_servers.empty()) return {task.id, std::nullopt};
 
         double best_score = std::numeric_limits<double>::max();
